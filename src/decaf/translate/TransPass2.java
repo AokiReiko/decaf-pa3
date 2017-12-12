@@ -12,6 +12,7 @@ import decaf.symbol.Variable;
 import decaf.tac.Label;
 import decaf.tac.Temp;
 import decaf.type.BaseType;
+import decaf.type.ClassType;
 
 public class TransPass2 extends Tree.Visitor {
 
@@ -339,8 +340,9 @@ public class TransPass2 extends Tree.Visitor {
 						callExpr.symbol.getFuncty().label, callExpr.symbol
 								.getReturnType()); 
 			} else { 
-				Temp vt = tr.genLoad(callExpr.receiver.val, 0);
-				//tr.genMemo(callExpr.receiver.type.toString());
+				
+				Temp vt = tr.genLoadVTable(((ClassType)callExpr.receiver.type).getSymbol().getVtable());
+
 				Temp func = tr.genLoad(vt, callExpr.symbol.getOffset());
 				callExpr.val = tr.genIndirectCall(func, callExpr.symbol
 						.getReturnType());
