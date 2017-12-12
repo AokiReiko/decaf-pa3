@@ -9,13 +9,20 @@ public class Variable extends Symbol {
 	private int offset;
 	
 	private Temp temp;
+	private Temp temp_add;
 	
 	public Temp getTemp() {
 		return temp;
 	}
+	public Temp getTempAdd() {
+		return temp_add;
+	}
 
 	public void setTemp(Temp temp) {
 		this.temp = temp;
+	}
+	public void setTempAdd(Temp temp) {
+		this.temp_add = temp;
 	}
 
 	public int getOffset() {

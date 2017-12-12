@@ -9,6 +9,7 @@ import decaf.scope.ClassScope;
 import decaf.scope.GlobalScope;
 import decaf.tac.Label;
 import decaf.tac.VTable;
+import decaf.type.BaseType;
 import decaf.type.ClassType;
 
 public class Class extends Symbol {
@@ -158,7 +159,7 @@ public class Class extends Symbol {
 			parent.resolveFieldOrder();
 			numNonStaticFunc = parent.numNonStaticFunc;
 			numVar = parent.numVar;
-			size = parent.size;
+			size = parent.size; 
 		} else {
 			numNonStaticFunc = 0;
 			numVar = 0;
@@ -169,8 +170,10 @@ public class Class extends Symbol {
 		Iterator<Symbol> iter = associatedScope.iterator();
 		while (iter.hasNext()) {
 			Symbol sym = iter.next();
-			if (sym.isVariable()) {
+			if (sym.isVariable()) {   
 				sym.setOrder(numVar++);
+				if (sym.getType().equal(BaseType.COMPLEX))
+					size += OffsetCounter.WORD_SIZE;
 				size += OffsetCounter.WORD_SIZE;
 			} else if (!((Function) sym).isStatik()) {
 				if (ps == null) {

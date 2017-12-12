@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 import decaf.tree.Tree;
+import decaf.type.BaseType;
 import decaf.backend.OffsetCounter;
 import decaf.symbol.Class;
 import decaf.symbol.Function;
@@ -16,14 +17,14 @@ public class TransPass1 extends Tree.Visitor {
 	private Translater tr;
 
 	private int objectSize;
-
+ 
 	private List<Variable> vars;
 
 	public TransPass1(Translater tr) {
 		this.tr = tr;
 		vars = new ArrayList<Variable>();
 	}
-
+ 
 	@Override
 	public void visitTopLevel(Tree.TopLevel program) {
 		for (Tree.ClassDef cd : program.classes) {
@@ -58,7 +59,9 @@ public class TransPass1 extends Tree.Visitor {
 			oc.reset();
 		}
 		for (Variable v : vars) {
-			v.setOffset(oc.next(OffsetCounter.WORD_SIZE));
+			if (v.getType().equal(BaseType.COMPLEX))
+				v.setOffset(oc.next(OffsetCounter.WORD_SIZE * 2));
+			else v.setOffset(oc.next(OffsetCounter.WORD_SIZE));
 		}
 	}
 
@@ -83,15 +86,23 @@ public class TransPass1 extends Tree.Visitor {
 			v.setOffset(oc.next(OffsetCounter.POINTER_SIZE));
 			order = 1;
 		} else {
-			order = 0;
+			order = 0; 
 		}
 		for (Tree.VarDef vd : funcDef.formals) {
 			vd.symbol.setOrder(order++);
 			Temp t = Temp.createTempI4();
 			t.sym = vd.symbol;
-			t.isParam = true;
+			t.isParam = true; 
 			vd.symbol.setTemp(t);
-			vd.symbol.setOffset(oc.next(vd.symbol.getTemp().size));
+			if (vd.symbol.getType().equal(BaseType.COMPLEX)) {
+				vd.symbol.setOrder(order++);
+				Temp t_add = Temp.createTempI4();
+				t_add.sym = vd.symbol;
+				t_add.isParam = true;
+				vd.symbol.setTempAdd(t_add);
+				vd.symbol.setOffset(oc.next(vd.symbol.getTemp().size * 2));
+			}
+			else vd.symbol.setOffset(oc.next(vd.symbol.getTemp().size));
 		}
 	}
 
@@ -99,8 +110,10 @@ public class TransPass1 extends Tree.Visitor {
 	public void visitVarDef(Tree.VarDef varDef) {
 		vars.add(varDef.symbol);
 		objectSize += OffsetCounter.WORD_SIZE;
-		if (varDef.symbol.type == BaseType.COMPLEX)
+		if (varDef.symbol.getType().equal(BaseType.COMPLEX))
 			objectSize += OffsetCounter.WORD_SIZE;
 	}
 
 }
+
+

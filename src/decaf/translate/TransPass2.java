@@ -58,13 +58,30 @@ public class TransPass2 extends Tree.Visitor {
 			Temp t = Temp.createTempI4();
 			t.sym = varDef.symbol;
 			varDef.symbol.setTemp(t);
+			if (varDef.symbol.getType().equal(BaseType.COMPLEX))
+			{
+				Temp t_add = Temp.createTempI4();
+				t_add.sym = varDef.symbol;
+				varDef.symbol.setTempAdd(t_add);
+			}
 		}
-	}
+	} 
 
 	@Override
 	public void visitBinary(Tree.Binary expr) {
 		expr.left.accept(this);
 		expr.right.accept(this);
+		if (expr.left.type.equal(BaseType.COMPLEX))
+			switch (expr.tag) {
+			case Tree.PLUS:
+				expr.val_add = tr.genAdd(expr.left.val_add, expr.right.val_add);
+				break;
+			case Tree.MUL:
+				expr.val_add = tr.genAdd(tr.genMul(expr.left.val, expr.right.val_add),
+										tr.genMul(expr.left.val_add, expr.right.val));
+				break;
+			default:
+			}
 		switch (expr.tag) {
 		case Tree.PLUS:
 			expr.val = tr.genAdd(expr.left.val, expr.right.val);
@@ -73,7 +90,11 @@ public class TransPass2 extends Tree.Visitor {
 			expr.val = tr.genSub(expr.left.val, expr.right.val);
 			break;
 		case Tree.MUL:    
-			expr.val = tr.genMul(expr.left.val, expr.right.val);
+			if (expr.left.type.equal(BaseType.COMPLEX))
+				expr.val = tr.genSub(tr.genMul(expr.left.val, expr.right.val),
+										tr.genMul(expr.left.val_add, expr.right.val_add));
+			else
+				expr.val = tr.genMul(expr.left.val, expr.right.val);
 			break;
 		case Tree.DIV:
 			expr.val = tr.genDiv(expr.left.val, expr.right.val);
@@ -140,11 +161,17 @@ public class TransPass2 extends Tree.Visitor {
 			Tree.Ident varRef = (Tree.Ident) assign.left;
 			tr.genStore(assign.expr.val, varRef.owner.val, varRef.symbol
 					.getOffset());
+			if (assign.expr.type.equal(BaseType.COMPLEX))
+				tr.genStore(assign.expr.val_add, varRef.owner.val, varRef.symbol
+					.getOffset() + OffsetCounter.WORD_SIZE);
 			break;
 		case PARAM_VAR:
 		case LOCAL_VAR:
 			tr.genAssign(((Tree.Ident) assign.left).symbol.getTemp(),
 					assign.expr.val);
+			if (assign.expr.type.equal(BaseType.COMPLEX))
+				tr.genAssign(((Tree.Ident) assign.left).symbol.getTempAdd(),
+					assign.expr.val_add);
 			break;
 		}
 	}
@@ -159,7 +186,8 @@ public class TransPass2 extends Tree.Visitor {
 			literal.val = tr.genLoadImm4((Boolean)(literal.value) ? 1 : 0);
 			break;
 		case Tree.IMG:
-			literal.val = tr.genLoadImm4(((Integer)literal.value).intValue());
+			literal.val_add = tr.genLoadImm4(((Integer)literal.value).intValue());
+			literal.val = Temp.createTempI4();
 			break;
 		default:
 			literal.val = tr.genLoadStrConst((String)literal.value);
@@ -179,15 +207,22 @@ public class TransPass2 extends Tree.Visitor {
 			expr.val = tr.genNeg(expr.expr.val);
 			break;
 		case Tree.RE:
-			break;
+			expr.val = Temp.createTempI4();
+			tr.genAssign(expr.val, expr.expr.val);
+			break; 
 		case Tree.IM:
+			expr.val = Temp.createTempI4();
+			tr.genAssign(expr.val, expr.expr.val_add);
 			break;
-		case Tree.COMPCAST:
+		case Tree.COMPCAST: 
+			expr.val = Temp.createTempI4();
+			expr.val_add = Temp.createTempI4();
+			tr.genAssign(expr.val, expr.expr.val);
 			break;
 		default:
 			expr.val = tr.genLNot(expr.expr.val);
-		}
-	}
+		} 
+	} 
 
 	@Override
 	public void visitNull(Tree.Null nullExpr) {
@@ -200,18 +235,18 @@ public class TransPass2 extends Tree.Visitor {
 			s.accept(this);
 		}
 	}
-
+ 
 	@Override
 	public void visitThisExpr(Tree.ThisExpr thisExpr) {
 		thisExpr.val = currentThis;
 	}
-
+ 
 	@Override
 	public void visitReadIntExpr(Tree.ReadIntExpr readIntExpr) {
 		readIntExpr.val = tr.genIntrinsicCall(Intrinsic.READ_INT);
 	}
 
-	@Override
+	@Override 
 	public void visitReadLineExpr(Tree.ReadLineExpr readStringExpr) {
 		readStringExpr.val = tr.genIntrinsicCall(Intrinsic.READ_LINE);
 	}
@@ -225,7 +260,7 @@ public class TransPass2 extends Tree.Visitor {
 			tr.genReturn(null);
 		}
 
-	}
+	} 
 
 	@Override
 	public void visitPrint(Tree.Print printStmt) {
@@ -254,7 +289,7 @@ public class TransPass2 extends Tree.Visitor {
 		indexed.val = tr.genLoad(base, 0);
 	}
 
-	@Override
+	@Override 
 	public void visitIdent(Tree.Ident ident) {
 		if(ident.lvKind == Tree.LValue.Kind.MEMBER_VAR){
 			ident.owner.accept(this);
@@ -263,9 +298,12 @@ public class TransPass2 extends Tree.Visitor {
 		switch (ident.lvKind) {
 		case MEMBER_VAR:
 			ident.val = tr.genLoad(ident.owner.val, ident.symbol.getOffset());
+			if (ident.symbol.getType().equal(BaseType.COMPLEX))
+				ident.val_add = tr.genLoad(ident.owner.val, ident.symbol.getOffset() + OffsetCounter.WORD_SIZE);
 			break;
 		default:
 			ident.val = ident.symbol.getTemp();
+			if (ident.symbol.getTempAdd() != null) ident.val_add = ident.symbol.getTempAdd();
 			break;
 		}
 	}
@@ -274,7 +312,7 @@ public class TransPass2 extends Tree.Visitor {
 	public void visitBreak(Tree.Break breakStmt) {
 		tr.genBranch(loopExits.peek());
 	}
-
+ 
 	@Override
 	public void visitCallExpr(Tree.CallExpr callExpr) {
 		if (callExpr.isArrayLength) {
@@ -284,22 +322,25 @@ public class TransPass2 extends Tree.Visitor {
 		} else {
 			if (callExpr.receiver != null) {
 				callExpr.receiver.accept(this);
-			}
+			}  
 			for (Tree.Expr expr : callExpr.actuals) {
 				expr.accept(this);
 			}
 			if (callExpr.receiver != null) {
 				tr.genParm(callExpr.receiver.val);
-			}
+			} 
 			for (Tree.Expr expr : callExpr.actuals) {
 				tr.genParm(expr.val);
+				if (expr.type.equal(BaseType.COMPLEX))
+					tr.genParm(expr.val_add);
 			}
 			if (callExpr.receiver == null) {
 				callExpr.val = tr.genDirectCall(
 						callExpr.symbol.getFuncty().label, callExpr.symbol
-								.getReturnType());
-			} else {
+								.getReturnType()); 
+			} else { 
 				Temp vt = tr.genLoad(callExpr.receiver.val, 0);
+				//tr.genMemo(callExpr.receiver.type.toString());
 				Temp func = tr.genLoad(vt, callExpr.symbol.getOffset());
 				callExpr.val = tr.genIndirectCall(func, callExpr.symbol
 						.getReturnType());
@@ -424,6 +465,54 @@ public class TransPass2 extends Tree.Visitor {
 		caseExpr.defaultExpr.accept(this);
 		tr.genAssign(caseExpr.val, caseExpr.defaultExpr.val);
 		tr.genMark(exit);   
-	}      
-}       
+	}
+	@Override
+	public void visitPrintComp(Tree.PrintComp printCompStmt) {
+		for (Tree.Expr r : printCompStmt.exprs) {
+			r.accept(this);
+			tr.genParm(r.val);
+			tr.genIntrinsicCall(Intrinsic.PRINT_INT);
+			Temp t = tr.genLoadStrConst("+");
+			tr.genParm(t);
+			tr.genIntrinsicCall(Intrinsic.PRINT_STRING);
+			tr.genParm(r.val_add);
+			tr.genIntrinsicCall(Intrinsic.PRINT_INT);
+			t = tr.genLoadStrConst("j");
+			tr.genParm(t);
+			tr.genIntrinsicCall(Intrinsic.PRINT_STRING);
+
+			 
+		}
+	}       
+	@Override
+	public void visitDood(Tree.Dood DoodStmt) {
+		Label start = Label.createLabel();
+		tr.genMark(start);
+		Label end = Label.createLabel();
+		loopExits.push(end);
+		List<Label> entr_list= new ArrayList();
+		for (Tree t: DoodStmt.branches) {
+			Tree.DoodBranch branch = ((Tree.DoodBranch)t);
+			branch.expr.accept(this);
+			Label entrance = Label.createLabel();
+			entr_list.add(entrance);
+			tr.genBnez(branch.expr.val, entrance);
+			//branch.stmt.accept(this);
+		}
+		tr.genBranch(end);
+		int i = 0;
+		for (Tree t: DoodStmt.branches) {
+			tr.genMark(entr_list.get(i++));
+			Tree.DoodBranch branch = ((Tree.DoodBranch)t);
+			branch.stmt.accept(this);
+			 tr.genBranch(start);
+		} 
+		tr.genMark(end);
+		loopExits.pop();
+	}
+	@Override
+	public void visitSuper(Tree.Super superExpr) {
+		superExpr.val = currentThis;
+	}
+}         
     
